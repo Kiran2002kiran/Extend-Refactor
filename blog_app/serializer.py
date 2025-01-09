@@ -14,7 +14,7 @@ class AddressSerializer(serializers.ModelSerializer):
         fields = ['line_1', 'line_2', 'city', 'state', 'postal_code', 'country']
 
 class RegisterSerializer(serializers.ModelSerializer):
-    address = AddressSerializer()  # Nested AddressSerializer to handle address data
+    address = AddressSerializer(required=False)  # Nested AddressSerializer to handle address data
 
     class Meta:
         model = User
@@ -22,12 +22,13 @@ class RegisterSerializer(serializers.ModelSerializer):
         extra_kwargs = {'password': {'write_only': True}}
 
     def create(self, validated_data):
-        address_data = validated_data.pop('address')  # Extract address data
-        user = User.objects.create_user(**validated_data)  # Create the User
-        # Create the Address and associate it with the user
-        Address.objects.create(user=user, **address_data)
-        return user
+        address_data = validated_data.pop('address', None)
+        user = User.objects.create_user(**validated_data)
+        if address_data:
+            Address.objects.create(**address_data)
 
+        return user
+    
 
 
 
