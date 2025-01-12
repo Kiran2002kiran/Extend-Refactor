@@ -2,6 +2,7 @@ from django.shortcuts import render
 
 # Create your views here.
 from rest_framework import generics
+from rest_framework.decorators import action
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
@@ -114,6 +115,81 @@ class BlogViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
 
+    @action(detail=False , methods=["post"] , url_path="bulk-create")
+    def bulk_create(self , request):
+        serializer = BlogSerializer(data=request.data , many=True)
+        if serializer.is_valid():
+            blogs = serializer.save()
+            return Response(
+                {
+                    "success" : True ,
+                    "message" : "Blogs created successfully." ,
+                    "data" : BlogSerializer(blogs , many=True).data ,
+                },
+                status=status.HTTP_201_CREATED,
+            )
+        return Response(
+            {
+                "success" : False ,
+                "message" : "Invalid data." ,
+                "errors" : serializer.errors ,
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    
+    @action(detail=False, methods=["post"], url_path="bulk-update")
+    def bulk_update(self, request):
+        blogs_data = request.data
+        blog_instances = []
+        error_ids = []
+
+        for blog_data in blogs_data:
+            try:
+                
+                blog_instance = Blog.objects.get(id=blog_data["id"])
+                
+                if "created_by" in blog_data:
+                    blog_data["created_by"] = User.objects.get(id=blog_data["created_by"])
+                
+                
+                for field, value in blog_data.items():
+                    setattr(blog_instance, field, value)
+                
+                blog_instances.append(blog_instance)
+            except Blog.DoesNotExist:
+                error_ids.append(blog_data["id"])
+            except User.DoesNotExist:
+                return Response(
+                    {"success": False, "message": f"Invalid user ID in 'created_by'."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            except KeyError:
+                return Response(
+                    {"success": False, "message": "ID field is required for all objects."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        
+        if blog_instances:
+            Blog.objects.bulk_update(blog_instances, ["title", "content", "created_by"])
+
+        
+        if error_ids:
+            return Response(
+                {
+                    "success": False,
+                    "message": f"Some blogs could not be updated. Invalid IDs: {error_ids}",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response(
+            {
+                "success": True,
+                "message": "Blogs updated successfully.",
+                "data": BlogSerializer(blog_instances, many=True).data,
+            },
+            status=status.HTTP_200_OK,
+        )
 
 
 class LogoutView(APIView):
